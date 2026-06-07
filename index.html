@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Støjmaskine</title>
+
+<style>
+body {
+    font-family: system-ui, sans-serif;
+    max-width: 500px;
+    margin: 2rem auto;
+    padding: 1rem;
+    text-align: center;
+}
+
+button {
+    font-size: 1.2rem;
+    padding: 0.8rem 1.5rem;
+    margin: 1rem;
+}
+
+select, input {
+    width: 100%;
+    margin: 0.5rem 0 1.5rem;
+}
+
+label {
+    display: block;
+    text-align: left;
+    font-weight: bold;
+}
+</style>
+<link rel="manifest" href="manifest.json">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Støjmaskine">
+</head>
+<body>
+
+<h1>🎧 Støjmaskine</h1>
+
+<label for="noiseType">Støjtype</label>
+<select id="noiseType">
+    <option value="white">Hvid støj</option>
+    <option value="pink">Pink støj</option>
+    <option value="brown">Brun støj</option>
+</select>
+
+<label for="volume">Volumen</label>
+<input type="range" id="volume" min="0" max="100" value="20">
+
+<label for="timer">Sleep timer</label>
+<select id="timer">
+    <option value="0">Ingen</option>
+    <option value="15">15 minutter</option>
+    <option value="30">30 minutter</option>
+    <option value="60">60 minutter</option>
+</select>
+
+<button id="toggleBtn">Start</button>
+
+<p id="status">Stoppet</p>
+
+<script>
+let audioContext;
+let node;
+let gainNode;
+let playing = false;
+let timerHandle = null;
+
+function createWhiteNoise(bufferSize = 4096) {
+    return function(event) {
+        const output = event.outputBuffer.getChannelData(0);
+
+        for (let i = 0; i < output.length; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+    };
+}
+
+function createPinkNoise() {
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+
+    return function(event) {
+        const output = event.outputBuffer.getChannelData(0);
+
+        for (let i=0; i<output.length; i++) {
+            let white = Math.random()*2-1;
+
+            b0 = 0.99886*b0 + white*0.0555179;
+            b1 = 0.99332*b1 + white*0.0750759;
+            b2 = 0.96900*b2 + white*0.1538520;
+            b3 = 0.86650*b3 + white*0.3104856;
+            b4 = 0.55000*b4 + white*0.5329522;
+            b5 = -0.7616*b5 - white*0.0168980;
+
+            output[i] =
+                b0+b1+b2+b3+b4+b5+b6+white*0.5362;
+
+            output[i] *= 0.11;
+
+            b6 = white * 0.115926;
+        }
+    };
+}
+
+function createBrownNoise() {
+    let lastOut = 0;
+
+    return function(event) {
+        const output = event.outputBuffer.getChannelData(0);
+
+        for (let i=0; i<output.length; i++) {
+            let white = Math.random()*2-1;
+
+            output[i] =
+                (lastOut + (0.02 * white)) / 1.02;
+
+            lastOut = output[i];
+            output[i] *= 3.5;
+        }
+    };
+}
+
+function startNoise() {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    gainNode = audioContext.createGain();
+
+    const volume =
+        document.getElementById("volume").value / 100;
+
+    gainNode.gain.value = volume;
+
+    node = audioContext.createScriptProcessor(4096,1,1);
+
+    const type =
+        document.getElementById("noiseType").value;
+
+    if (type === "white")
+        node.onaudioprocess = createWhiteNoise();
+
+    if (type === "pink")
+        node.onaudioprocess = createPinkNoise();
+
+    if (type === "brown")
+        node.onaudioprocess = createBrownNoise();
+
+    node.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    playing = true;
+
+    document.getElementById("toggleBtn").textContent = "Stop";
+    document.getElementById("status").textContent = "Afspiller";
+
+    const minutes =
+        Number(document.getElementById("timer").value);
+
+    if (minutes > 0) {
+        timerHandle = setTimeout(stopNoise,
+            minutes * 60 * 1000);
+    }
+}
+
+function stopNoise() {
+    if (timerHandle) {
+        clearTimeout(timerHandle);
+        timerHandle = null;
+    }
+
+    if (node) node.disconnect();
+    if (gainNode) gainNode.disconnect();
+
+    if (audioContext)
+        audioContext.close();
+
+    playing = false;
+
+    document.getElementById("toggleBtn").textContent = "Start";
+    document.getElementById("status").textContent = "Stoppet";
+}
+
+document.getElementById("toggleBtn")
+.addEventListener("click", () => {
+    if (playing)
+        stopNoise();
+    else
+        startNoise();
+});
+
+document.getElementById("volume")
+.addEventListener("input", e => {
+    if (gainNode)
+        gainNode.gain.value =
+            e.target.value / 100;
+});
+</script>
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
+</body>
+</html>
